@@ -78,6 +78,8 @@
 
 #include <session/projects/SessionProjects.hpp>
 
+#include "SessionConsoleInput.hpp"
+
 #include "session-config.h"
 
 #ifdef RSTUDIO_SERVER
@@ -103,7 +105,7 @@ std::string userIdentityDisplay(const http::Request& request)
 }
 
 #ifdef RSTUDIO_SERVER
-Error makePortTokenCookie(boost::shared_ptr<HttpConnection> ptrConnection, 
+Error makePortTokenCookie(boost::shared_ptr<HttpConnection> ptrConnection,
       http::Response& response)
 {
    // extract the base URL
@@ -160,9 +162,9 @@ Error makePortTokenCookie(boost::shared_ptr<HttpConnection> ptrConnection,
 
    // create the cookie; don't set an expiry date as this will be a session cookie
    http::Cookie cookie(
-            ptrConnection->request(), 
-            kPortTokenCookie, 
-            persistentState().portToken(), 
+            ptrConnection->request(),
+            kPortTokenCookie,
+            persistentState().portToken(),
             path,
             options().sameSite(),
             true, // HTTP only -- client doesn't get to read this token
@@ -181,15 +183,15 @@ void handleClientInit(const boost::function<void()>& initFunction,
 {
    // notify that we're about to initialize
    module_context::events().onBeforeClientInit();
-   
+
    // alias options
    Options& options = session::options();
-   
-   // check for valid CSRF headers in server mode 
-   if (options.programMode() == kSessionProgramModeServer && 
+
+   // check for valid CSRF headers in server mode
+   if (options.programMode() == kSessionProgramModeServer &&
        !core::http::validateCSRFHeaders(ptrConnection->request()))
    {
-      LOG_WARNING_MESSAGE("Client init request to " + ptrConnection->request().uri() + 
+      LOG_WARNING_MESSAGE("Client init request to " + ptrConnection->request().uri() +
             " has missing or mismatched " + std::string(kCSRFTokenCookie) + " cookie or " +
             std::string(kCSRFTokenHeader) + " header");
       // Send an error that shows up in the alert box of the browser - if we send unauthorized here, it causes an infinite sign in loop
@@ -216,7 +218,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
    // client. so, clear out the events which might be pending in the
    // client event service and/or queue
    bool clearEvents = resumed;
-   
+
    // reset the client event service for the new client (will cause
    // outstanding http requests from old clients to fail with
    // InvalidClientId). note that we can't simply stop() the
@@ -233,7 +235,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
       // set RSTUDIO_USER_IDENTITY_DISPLAY environment variable based on
       // header value (complements RSTUDIO_USER_IDENTITY)
-      core::system::setenv("RSTUDIO_USER_IDENTITY_DISPLAY", 
+      core::system::setenv("RSTUDIO_USER_IDENTITY_DISPLAY",
             userIdentityDisplay(ptrConnection->request()));
 
       // read display name from upstream if set
@@ -245,7 +247,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
       }
    }
 
-   // prepare session info 
+   // prepare session info
    json::Object sessionInfo;
    sessionInfo["clientId"] = clientId;
    sessionInfo["mode"] = options.programMode();
@@ -255,7 +257,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
    initOptions["restore_workspace"] = options.rRestoreWorkspace();
    initOptions["run_rprofile"] = options.rRunRprofile();
    sessionInfo["init_options"] = initOptions;
-   
+
    sessionInfo["userIdentity"] = userIdentityDisplay(ptrConnection->request());
    sessionInfo["systemUsername"] = core::system::username();
 
@@ -268,47 +270,47 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    // R_LIBS_USER
    sessionInfo["r_libs_user"] = module_context::rLibsUser();
-   
+
    // user home path
    sessionInfo["user_home_path"] = session::options().userHomePath().getAbsolutePath();
-   
+
    // installed client version
    sessionInfo["client_version"] = http_methods::clientVersion();
-   
+
    // default prompt
-   sessionInfo["prompt"] = rstudio::r::options::getOption<std::string>("prompt");
+   sessionInfo["prompt"] = module_context::rPrompt();
 
    // client state
    json::Object clientStateObject;
    rstudio::r::session::clientState().currentState(&clientStateObject);
    sessionInfo["client_state"] = clientStateObject;
-   
+
    // source documents
    json::Array jsonDocs;
    Error error = modules::source::clientInitDocuments(&jsonDocs);
    if (error)
       LOG_ERROR(error);
    sessionInfo["source_documents"] = jsonDocs;
-   
+
    // docs url
    sessionInfo["docsURL"] = session::options().docsURL();
 
    // get alias to console_actions and get limit
    rstudio::r::session::ConsoleActions& consoleActions = rstudio::r::session::consoleActions();
    sessionInfo["console_actions_limit"] = consoleActions.capacity();
- 
+
    // check if reticulate's Python session has been initialized
    sessionInfo["python_initialized"] = modules::reticulate::isPythonInitialized();
-   
+
    // check if the Python REPL is active
    sessionInfo["python_repl_active"] = modules::reticulate::isReplActive();
-   
+
    // propagate RETICULATE_PYTHON if set
    std::string reticulate_python = core::system::getenv("RETICULATE_PYTHON");
    if (reticulate_python.empty())
       reticulate_python = core::system::getenv("RETICULATE_PYTHON_FALLBACK");
    sessionInfo["reticulate_python"] = reticulate_python;
-   
+
    // get current console language
    sessionInfo["console_language"] = modules::reticulate::isReplActive() ? "Python" : "R";
 
@@ -367,7 +369,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    sessionInfo["have_advanced_step_commands"] =
                         modules::breakpoints::haveAdvancedStepCommands();
-   
+
    // initial working directory
    std::string initialWorkingDir = module_context::createAliasedPath(
                                           dirs::getInitialWorkingDirectory());
@@ -387,9 +389,9 @@ void handleClientInit(const boost::function<void()>& initFunction,
       sessionInfo["active_project_name"] = projects::projectContext().projectName();
       sessionInfo["project_ui_prefs"] = projects::projectContext().uiPrefs();
       sessionInfo["project_open_docs"] = projects::projectContext().openDocs();
-      sessionInfo["project_supports_sharing"] = 
+      sessionInfo["project_supports_sharing"] =
          projects::projectContext().supportsSharing();
-      sessionInfo["project_parent_browseable"] = 
+      sessionInfo["project_parent_browseable"] =
          projects::projectContext().parentBrowseable();
       sessionInfo["project_user_data_directory"] =
        module_context::createAliasedPath(
@@ -473,12 +475,12 @@ void handleClientInit(const boost::function<void()>& initFunction,
       sessionInfo["has_pkg_vig"] = false;
    }
 
-   sessionInfo["blogdown_config"] = modules::rmarkdown::blogdown::blogdownConfig();
+   sessionInfo["blogdown_config"] = modules::rmarkdown::blogdown::blogdownConfig(!console_input::executing());
    sessionInfo["is_bookdown_project"] = module_context::isBookdownProject();
    sessionInfo["is_distill_project"] = module_context::isDistillProject();
 
    sessionInfo["quarto_config"] = quarto::quartoConfigJSON();
-   
+
    sessionInfo["graphics_backends"] = modules::graphics::supportedBackends();
 
    sessionInfo["presentation_state"] = modules::presentation::presentationStateAsJson();
@@ -534,7 +536,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    // allow opening shared projects if it's enabled, and if there's shared
    // storage from which we can discover the shared projects
-   sessionInfo["allow_open_shared_projects"] = 
+   sessionInfo["allow_open_shared_projects"] =
          core::system::getenv(kRStudioDisableProjectSharing).empty() &&
          !options.getOverlayOption(kSessionSharedStoragePath).empty();
 
@@ -560,9 +562,9 @@ void handleClientInit(const boost::function<void()>& initFunction,
          modules::rmarkdown::rmarkdownPackageAvailable();
    sessionInfo["knit_params_available"] =
          modules::rmarkdown::knitParamsAvailable();
-   sessionInfo["knit_working_dir_available"] = 
+   sessionInfo["knit_working_dir_available"] =
          modules::rmarkdown::knitWorkingDirAvailable();
-   sessionInfo["ppt_available"] = 
+   sessionInfo["ppt_available"] =
          modules::rmarkdown::pptAvailable();
 
    sessionInfo["clang_available"] = modules::clang::isAvailable();
@@ -582,7 +584,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    sessionInfo["show_user_home_page"] = options.showUserHomePage();
    sessionInfo["user_home_page_url"] = json::Value();
-   
+
    sessionInfo["r_addins"] = modules::r_addins::addinRegistryAsJson();
    sessionInfo["package_provided_extensions"] = modules::ppe::indexer().getPayload();
 
@@ -597,7 +599,7 @@ void handleClientInit(const boost::function<void()>& initFunction,
    sessionInfo["drivers_support_licensing"] = options.supportsDriversLicensing();
 
    sessionInfo["quit_child_processes_on_exit"] = options.quitChildProcessesOnExit();
-   
+
    sessionInfo["git_commit_large_file_size"] = options.gitCommitLargeFileSize();
 
    sessionInfo["default_rsconnect_server"] = options.defaultRSConnectServer();
@@ -650,13 +652,13 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    // session route for load balanced sessions
    sessionInfo["session_node"] = session::modules::overlay::sessionNode();
-   
+
    // copilot
    sessionInfo["copilot_enabled"] = options.copilotEnabled();
-   
+
    // automation agent
    sessionInfo["is_automation_agent"] = options.isAutomationAgent();
-   
+
    if (projects::projectContext().hasProject())
    {
       projects::RProjectCopilotOptions options;
@@ -701,10 +703,10 @@ void handleClientInit(const boost::function<void()>& initFunction,
 
    // complete initialization of session
    init::ensureSessionInitialized();
-   
+
    // notify modules of the client init
    module_context::events().onClientInit();
-   
+
    // call the init function
    initFunction();
 

@@ -89,7 +89,7 @@ public class UserPrefs extends UserPrefsComputed
       eventBus.addHandler(SessionInitEvent.TYPE, this);
       eventBus.addHandler(UserPrefsChangedEvent.TYPE, this);
       eventBus.addHandler(DeferredInitCompletedEvent.TYPE, this);
-      
+
       // Let desktop-side know when this changes
       if (BrowseCap.isElectron())
       {
@@ -102,9 +102,9 @@ public class UserPrefs extends UserPrefsComputed
       writeUserPrefs(null);
    }
 
-   public void writeUserPrefs(CommandWithArg<Boolean> onCompleted)
-   {
-      updatePrefs(session_.getSessionInfo().getPrefs());
+   public void writeUserPrefs(CommandWithArg<Boolean> onCompleted) {
+      writeUserPrefsLocal();
+
       server_.setUserPrefs(
          session_.getSessionInfo().getUserPrefs(),
          new ServerRequestCallback<Void>()
@@ -141,6 +141,11 @@ public class UserPrefs extends UserPrefsComputed
                Debug.logError(error);
             }
          });
+   }
+
+   public void writeUserPrefsLocal()
+   {
+      updatePrefs(session_.getSessionInfo().getPrefs());
    }
 
    /**
@@ -221,7 +226,7 @@ public class UserPrefs extends UserPrefsComputed
          constants_.cancel(),
          false);
    }
-   
+
    @Override
    public void onSessionInit(SessionInitEvent event)
    {

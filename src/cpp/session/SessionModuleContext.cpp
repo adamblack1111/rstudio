@@ -64,6 +64,7 @@
 #include <r/RFunctionHook.hpp>
 #include <r/session/RSession.hpp>
 #include <r/session/RConsoleActions.hpp>
+#include <r/ROptions.hpp>
 
 #include <session/SessionActiveSessionsStorage.hpp>
 #include <session/SessionOptions.hpp>
@@ -75,6 +76,7 @@
 
 #include "SessionRpc.hpp"
 #include "SessionClientEventQueue.hpp"
+#include "SessionConsoleInput.hpp"
 #include "SessionMainProcess.hpp"
 
 #include <session/projects/SessionProjects.hpp>
@@ -99,7 +101,7 @@ using namespace rstudio::core;
 using namespace boost::placeholders;
 
 namespace rstudio {
-namespace session {   
+namespace session {
 namespace module_context {
 
 bool isSessionSslEnabled()
@@ -113,33 +115,33 @@ core::Error sendSessionRequest(const std::string& uri,
 {
    return session::http::sendSessionRequest(uri, body, isSessionSslEnabled(), pResponse);
 }
-      
+
 namespace {
 
 // simple service for handling console_input rpc requests
 class ConsoleInputService : boost::noncopyable
 {
 public:
-   
+
    ConsoleInputService()
    {
       core::thread::safeLaunchThread(
                boost::bind(&ConsoleInputService::run, this),
                &thread_);
    }
-   
+
    ~ConsoleInputService()
    {
       enqueue("!");
    }
-   
+
    void enqueue(const std::string& input)
    {
       requests_.enque(input);
    }
-   
+
 private:
-   
+
    void run()
    {
       while (true)
@@ -149,7 +151,7 @@ private:
          {
             if (input == "!")
                return;
-            
+
             core::http::Response response;
             Error error = session::module_context::sendSessionRequest(
                      "/rpc/console_input",
@@ -158,11 +160,11 @@ private:
             if (error)
                LOG_ERROR(error);
          }
-         
+
          requests_.wait();
       }
    }
-   
+
    boost::thread thread_;
    core::thread::ThreadsafeQueue<std::string> requests_;
 };
@@ -181,10 +183,10 @@ SEXP rs_enqueClientEvent(SEXP nameSEXP, SEXP dataSEXP)
       // ignore forked sessions
       if (main_process::wasForked())
          return R_NilValue;
-      
+
       // extract name
       std::string name = r::sexp::asString(nameSEXP);
-      
+
       // extract json value (for primitive types we only support scalars
       // since this is the most common type of event data). to return an
       // array of primitives you need to wrap them in a list/object
@@ -196,19 +198,19 @@ SEXP rs_enqueClientEvent(SEXP nameSEXP, SEXP dataSEXP)
          {
             // do nothing, data will be a null json value
             break;
-         }   
+         }
          case VECSXP:
          {
             extractError = r::json::jsonValueFromList(dataSEXP, &data);
             break;
-         }   
+         }
          default:
          {
             extractError = r::json::jsonValueFromScalar(dataSEXP, &data);
             break;
          }
       }
-      
+
       // check for error
       if (extractError)
       {
@@ -216,7 +218,7 @@ SEXP rs_enqueClientEvent(SEXP nameSEXP, SEXP dataSEXP)
          throw r::exec::RErrorException(
                                         "Couldn't extract json value from event data");
       }
-      
+
       // determine the event type from the event name
       int type = -1;
       if (name == "package_status_changed")
@@ -307,7 +309,7 @@ SEXP rs_enqueClientEvent(SEXP nameSEXP, SEXP dataSEXP)
       r::exec::error(e.message());
    }
    CATCH_UNEXPECTED_EXCEPTION
-   
+
    return R_NilValue;
 }
 
@@ -332,7 +334,7 @@ SEXP rs_logErrorMessage(SEXP messageSEXP)
    std::string message = r::sexp::asString(messageSEXP);
    LOG_ERROR_MESSAGE(message);
    return R_NilValue;
-}  
+}
 
 // log warning message from R
 SEXP rs_logWarningMessage(SEXP messageSEXP)
@@ -340,8 +342,8 @@ SEXP rs_logWarningMessage(SEXP messageSEXP)
    std::string message = r::sexp::asString(messageSEXP);
    LOG_WARNING_MESSAGE(message);
    return R_NilValue;
-}  
-   
+}
+
 // sleep the main thread (debugging function used to test rpc/abort)
 SEXP rs_threadSleep(SEXP secondsSEXP)
 {
@@ -449,7 +451,7 @@ SEXP rs_packageLoaded(SEXP pkgnameSEXP)
 {
    if (main_process::wasForked())
       return R_NilValue;
-   
+
    std::string pkgname = r::sexp::safeAsString(pkgnameSEXP);
 
    // fire server event
@@ -468,13 +470,13 @@ SEXP rs_packageUnloaded(SEXP pkgnameSEXP)
 {
    if (main_process::wasForked())
       return R_NilValue;
-   
+
    std::string pkgname = r::sexp::safeAsString(pkgnameSEXP);
    ClientEvent packageUnloadedEvent(
             client_events::kPackageUnloaded,
             json::Value(pkgname));
    enqueClientEvent(packageUnloadedEvent);
-   
+
    return R_NilValue;
 }
 
@@ -504,7 +506,7 @@ SEXP rs_restartR(SEXP afterRestartSEXP, SEXP cleanSEXP)
 {
    std::string afterRestart = r::sexp::safeAsString(afterRestartSEXP);
    bool clean = r::sexp::asLogical(cleanSEXP);
-   
+
    json::Object dataJson;
    json::Object suspendOptionsJson;
    suspendOptionsJson["save_minimal"] = clean;
@@ -512,10 +514,10 @@ SEXP rs_restartR(SEXP afterRestartSEXP, SEXP cleanSEXP)
    suspendOptionsJson["exclude_packages"] = clean;
    suspendOptionsJson["after_restart"] = afterRestart;
    dataJson["options"] = suspendOptionsJson;
-   
+
    ClientEvent event(client_events::kSuspendAndRestart, dataJson);
    module_context::enqueClientEvent(event);
-   
+
    return R_NilValue;
 }
 
@@ -723,45 +725,45 @@ FilePath registerMonitoredUserScratchDir(const std::string& dirName,
 
 
 namespace {
-   
+
 // manage signals used for custom save and restore
-class SuspendHandlers : boost::noncopyable 
+class SuspendHandlers : boost::noncopyable
 {
 public:
    SuspendHandlers() : nextGroup_(0) {}
-   
-public:   
+
+public:
    void add(const SuspendHandler& handler)
    {
       int group = nextGroup_++;
       suspendSignal_.connect(group, handler.suspend());
       resumeSignal_.connect(group, handler.resume());
    }
-   
+
    void suspend(const r::session::RSuspendOptions& options,
                 Settings* pSettings)
    {
       suspendSignal_(options, pSettings);
    }
-   
+
    void resume(const Settings& settings)
    {
       resumeSignal_(settings);
    }
-   
+
 private:
-   
-   // use groups to ensure signal order. call suspend handlers in order 
+
+   // use groups to ensure signal order. call suspend handlers in order
    // of subscription and call resume handlers in reverse order of
    // subscription.
-   
+
    int nextGroup_;
-   
+
    RSTUDIO_BOOST_SIGNAL<void(const r::session::RSuspendOptions&,Settings*),
                  RSTUDIO_BOOST_LAST_VALUE<void>,
                  int,
                  std::less<int> > suspendSignal_;
-                  
+
    RSTUDIO_BOOST_SIGNAL<void(const Settings&),
                  RSTUDIO_BOOST_LAST_VALUE<void>,
                  int,
@@ -774,21 +776,21 @@ SuspendHandlers& suspendHandlers()
    static SuspendHandlers instance;
    return instance;
 }
-   
+
 } // anonymous namespace
-   
+
 void addSuspendHandler(const SuspendHandler& handler)
 {
    suspendHandlers().add(handler);
 }
-   
+
 void onSuspended(const r::session::RSuspendOptions& options,
                  Settings* pPersistentState)
 {
    pPersistentState->beginUpdate();
    suspendHandlers().suspend(options, pPersistentState);
    pPersistentState->endUpdate();
-   
+
 }
 
 void onResumed(const Settings& persistentState)
@@ -1096,11 +1098,11 @@ std::string createAliasedPath(const FileInfo& fileInfo)
 {
    return createAliasedPath(FilePath(fileInfo.absolutePath()));
 }
-   
+
 std::string createAliasedPath(const FilePath& path)
 {
    return FilePath::createAliasedPath(path, userHomePath());
-}   
+}
 
 FilePath resolveAliasedPath(const std::string& aliasedPath)
 {
@@ -1166,7 +1168,18 @@ std::string rLibsUser()
 {
    return core::system::getenv("R_LIBS_USER");
 }
-   
+
+std::string rPrompt() {
+   static std::string res = "";
+
+   // return the last known value if the session is busy to avoid touching the R runtime
+   if (console_input::executing())
+      return res;
+
+   res = rstudio::r::options::getOption<std::string>("prompt");
+   return res;
+}
+
 bool isVisibleUserFile(const FilePath& filePath)
 {
    return (filePath.isWithin(module_context::userHomePath()) &&
@@ -1177,7 +1190,7 @@ FilePath safeCurrentPath()
 {
    return FilePath::safeCurrentPath(userHomePath());
 }
-   
+
 FilePath tempFile(const std::string& prefix, const std::string& extension)
 {
    return r::session::utils::tempFile(prefix, extension);
@@ -1218,10 +1231,10 @@ bool addTinytexToPathIfNecessary()
    static bool s_added = false;
    if (s_added)
       return true;
-   
+
    if (!module_context::findProgram("pdflatex").isEmpty())
       return false;
-   
+
    SEXP binDirSEXP = R_NilValue;
    r::sexp::Protect protect;
    Error error = r::exec::RFunction(".rs.tinytexBin").call(&binDirSEXP, &protect);
@@ -1230,15 +1243,15 @@ bool addTinytexToPathIfNecessary()
       LOG_ERROR(error);
       return false;
    }
-   
+
    if (!r::sexp::isString(binDirSEXP))
       return false;
-   
+
    std::string binDir = r::sexp::asString(binDirSEXP);
    FilePath binPath = module_context::resolveAliasedPath(binDir);
    if (!binPath.exists())
       return false;
-   
+
    s_added = true;
    core::system::addToSystemPath(binPath);
    return true;
@@ -1291,20 +1304,20 @@ bool isTextFile(const FilePath& targetPath)
 {
    if (hasTextMimeType(targetPath))
       return true;
-   
+
    if (isJsonFile(targetPath))
       return true;
 
    if (hasBinaryMimeType(targetPath))
       return false;
-   
+
    if (targetPath.getSize() == 0)
       return true;
 
 #ifndef _WIN32
-   
+
    std::string fileCommand = "file";
-   
+
    // the behavior of the 'file' command in the macOS High Sierra beta
    // changed such that '--mime' no longer ensured that mime-type strings
    // were actually emitted. using '-I' instead appears to work around this.
@@ -1315,7 +1328,7 @@ bool isTextFile(const FilePath& targetPath)
 #else
    const char * const kMimeTypeArg = "--mime";
 #endif
-   
+
    core::shell_utils::ShellCommand cmd(fileCommand);
    cmd << "--dereference";
    cmd << kMimeTypeArg;
@@ -1483,7 +1496,14 @@ bool isPackageVersionInstalled(const std::string& packageName,
 
 bool isMinimumDevtoolsInstalled()
 {
-   return isPackageVersionInstalled("devtools", "1.4.1");
+   static bool res = false;
+
+   // return the last known value if the session is busy to avoid touching the R runtime
+   if (console_input::executing())
+      return res;
+
+   res = isPackageVersionInstalled("devtools", "1.4.1");
+   return res;
 }
 
 bool isMinimumRoxygenInstalled()
@@ -1497,7 +1517,7 @@ std::string packageVersion(const std::string& packageName)
    Error error = r::exec::RFunction(".rs.packageVersionString")
          .addParam(packageName)
          .call(&version);
-   
+
    if (error)
    {
       LOG_ERROR(error);
@@ -1516,10 +1536,10 @@ Error packageVersion(const std::string& packageName,
    Error error = r::exec::RFunction(".rs.packageVersionString")
          .addParam(packageName)
          .call(&version);
-   
+
    if (error)
       return error;
-   
+
    *pVersion = Version(version);
    return Success();
 }
@@ -1780,7 +1800,7 @@ SEXP rs_base64decode(SEXP dataSEXP, SEXP binarySEXP)
 
 SEXP rs_htmlEscape(SEXP textSEXP, SEXP attributeSEXP)
 {
-   std::string escaped = string_utils::htmlEscape(r::sexp::safeAsString(textSEXP), 
+   std::string escaped = string_utils::htmlEscape(r::sexp::safeAsString(textSEXP),
          r::sexp::asLogical(attributeSEXP));
    r::sexp::Protect protect;
    return r::sexp::create(escaped, &protect);
@@ -1825,7 +1845,7 @@ json::Object createFileSystemItem(const FileInfo& fileInfo)
                         e.what());
       entry["length"] = 0;
    }
-   
+
    entry["exists"] = FilePath(fileInfo.absolutePath()).exists();
 
    entry["lastModified"] = date_time::millisecondsSinceEpoch(
@@ -1840,7 +1860,12 @@ json::Object createFileSystemItem(const FilePath& filePath)
 
 std::string rVersion()
 {
-   std::string rVersion;
+   static std::string rVersion;
+
+   // return the last known value if the session is busy to avoid touching the R runtime
+   if (console_input::executing())
+      return rVersion;
+
    Error error = rstudio::r::exec::RFunction(".rs.rVersionString")
          .call(&rVersion);
    if (error)
@@ -1858,7 +1883,12 @@ std::string rVersionLabel()
 std::string rHomeDir()
 {
    // get the current R home directory
-   std::string rVersionHome;
+   static std::string rVersionHome;
+
+   // return the last known value if the session is busy to avoid touching the R runtime
+   if (console_input::executing())
+      return rVersionHome;
+
    Error error = rstudio::r::exec::RFunction("R.home").call(&rVersionHome);
    if (error)
       LOG_ERROR(error);
@@ -1940,8 +1970,8 @@ r_util::ActiveSessions& activeSessions()
       std::shared_ptr<r_util::IActiveSessionsStorage> storage;
       Error error = storage::activeSessionsStorage(&storage);
 
-      // The only real error we can get here is if the current user can't 
-      // be retrieved, but if that's the case we should have exited with a 
+      // The only real error we can get here is if the current user can't
+      // be retrieved, but if that's the case we should have exited with a
       // failure during start-up. We'll probably SegFault in any calls to the
       // ActiveSession object, but the process is in a very broken state anyway
       // Log before we crash so we can know what went wrong
@@ -1950,7 +1980,7 @@ r_util::ActiveSessions& activeSessions()
 
       pSessions.reset(new r_util::ActiveSessions(storage, userScratchPath()));
    }
-   
+
    return *pSessions;
 }
 
@@ -2022,7 +2052,7 @@ Error sourceModuleRFileWithResult(const std::string& rSourceFile,
    return core::system::runProgram(rBin, args, "", options, pResult);
 }
 
-      
+
 void enqueClientEvent(const ClientEvent& event)
 {
    session::clientEventQueue().add(event);
@@ -2089,15 +2119,15 @@ bool fileListingFilter(const core::FileInfo& fileInfo, bool hideObjectFiles)
          }
       }
    }
-   
+
    // Check for hidden files
    if (filePath.isHidden())
       return false;
-   
+
    // Check for object files
    if (hideObjectFiles && (ext == ".o" || ext == ".so" || ext == ".dll"))
       return false;
-   
+
    // ok, passed our filters
    return true;
 }
@@ -2172,22 +2202,22 @@ void enqueFileChangedEvents(const core::FilePath& vcsStatusRoot,
 Error enqueueConsoleInput(const std::string& consoleInput)
 {
    using namespace r::session;
-   
+
    // construct our JSON RPC
    json::Array jsonParams = RConsoleInput(consoleInput).toJsonArray();
-   
+
    json::Object jsonRpc;
    jsonRpc["method"] = "console_input";
    jsonRpc["params"] = jsonParams;
    jsonRpc["clientId"] = clientEventService().clientId();
-   
+
    // serialize for transmission
    std::ostringstream oss;
    jsonRpc.write(oss);
-   
+
    // and fire it off
    consoleInputService().enqueue(oss.str());
-   
+
    return Success();
 }
 
@@ -2389,12 +2419,12 @@ FilePath sourceDiagnostics()
 {
    FilePath diagnosticsPath =
          options().coreRSourcePath().completeChildPath("Diagnostics.R");
-   
+
    Error error = r::exec::RFunction("source")
          .addParam(string_utils::utf8ToSystem(diagnosticsPath.getAbsolutePath()))
          .addParam("chdir", true)
          .call();
-   
+
    if (error)
    {
       LOG_ERROR(error);
@@ -2410,7 +2440,7 @@ FilePath sourceDiagnostics()
       return module_context::resolveAliasedPath(reportPath);
    }
 }
-   
+
 namespace {
 
 void beginRpcHandler(json::JsonRpcFunction function,
@@ -2424,10 +2454,10 @@ void beginRpcHandler(json::JsonRpcFunction function,
       BOOST_ASSERT(!response.hasAfterResponse());
       if (error)
          response.setError(error);
-      
+
       if (!response.hasField(kEventsPending))
          response.setField(kEventsPending, "false");
-      
+
       json::Object value;
       value["handle"] = asyncHandle;
       value["response"] = response.getRawResponse();
@@ -2616,7 +2646,7 @@ bool isPathViewAllowed(const FilePath& filePath)
    // Viewing content in the home directory is always allowed
    if (filePath.isWithin(userHomePath().getParent()))
       return true;
-      
+
    // Viewing content in the session temporary files path is always allowed
    if (isSessionTempPath(filePath))
       return true;
@@ -2826,7 +2856,7 @@ Please run:
 
 in a terminal to accept the Xcode license, and then restart RStudio.
 )EOF";
-   
+
    std::cerr << msg << std::endl;
 }
 #endif
@@ -2846,7 +2876,7 @@ bool hasMacOSDeveloperTools()
 {
    if (!isMacOS())
       return false;
-   
+
    core::system::ProcessResult result;
    Error error = core::system::runCommand(
             "/usr/bin/xcrun --find --show-sdk-path",
@@ -2869,63 +2899,63 @@ bool hasMacOSCommandLineTools()
 {
    if (!isMacOS())
       return false;
-   
+
    return FilePath("/Library/Developer/CommandLineTools/SDKs/MacOSX.sdk").exists();
 }
 
 void checkXcodeLicense()
 {
 #ifdef __APPLE__
-   
+
    // avoid repeatedly warning the user
    static bool s_licenseChecked;
    if (s_licenseChecked)
       return;
-   
+
    s_licenseChecked = true;
-   
+
    core::system::ProcessResult result;
    Error error = core::system::runCommand(
             "/usr/bin/xcrun --find --show-sdk-path",
             core::system::ProcessOptions(),
             &result);
-   
+
    // if an error occurs, log it but avoid otherwise annoying the user
    if (error)
    {
       LOG_ERROR(error);
       return;
    }
-   
+
    // exit code 69 implies license error
    if (result.exitStatus == 69)
       warnXcodeLicense();
-   
+
 #endif
 }
 
 std::vector<FilePath> ignoreContentDirs()
 {
    std::vector<FilePath> ignoreDirs;
-   
+
    if (projects::projectContext().hasProject())
    {
       // python virtual environments
       ignoreDirs = projects::projectContext().pythonEnvs();
       quarto::QuartoConfig quartoConf = quarto::quartoConfig();
-      
+
       // quarto site output dir
       if (quartoConf.is_project)
       {
          FilePath quartoProjDir = module_context::resolveAliasedPath(quartoConf.project_dir);
-         
+
          std::string quartoOutputDir = quartoConf.project_output_dir;
          if (!quartoOutputDir.empty())
             ignoreDirs.push_back(quartoProjDir.completeChildPath(quartoOutputDir));
-         
+
          ignoreDirs.push_back(quartoProjDir.completeChildPath("_freeze"));
       }
-      
+
       // rmarkdown site output dir
       if (module_context::isWebsiteProject())
       {
@@ -2935,7 +2965,7 @@ std::vector<FilePath> ignoreContentDirs()
             ignoreDirs.push_back(buildTargetPath.completeChildPath(outputDir));
       }
    }
-   
+
    return ignoreDirs;
 }
 
@@ -2965,7 +2995,7 @@ Error adaptToLanguage(const std::string& language)
 {
    // check to see what language is active in main console
    using namespace r::exec;
-   
+
    // check to see what language is currently active (but default to r)
    std::string activeLanguage = getActiveLanguage();
 
@@ -2979,13 +3009,13 @@ Error adaptToLanguage(const std::string& language)
       static RSTUDIO_BOOST_CONNECTION conn;
       if (conn.connected())
          return Success();
-      
+
       // establish the connection, and then simply disconnect once we
       // receive the signal
       conn = module_context::events().onConsolePrompt.connect([&](const std::string&) {
          conn.disconnect();
       });
-      
+
       Error error;
 
       if (activeLanguage == "R" && language == "Python")
@@ -3002,7 +3032,7 @@ Error adaptToLanguage(const std::string& language)
       if (error)
          LOG_ERROR(error);
    }
-   
+
    return Success();
 }
 
@@ -3052,6 +3082,6 @@ Error initialize()
 }
 
 
-} // namespace module_context         
+} // namespace module_context
 } // namespace session
 } // namespace rstudio

@@ -189,7 +189,7 @@ public class Application implements ApplicationEventHandlers
       events.addHandler(AriaLiveStatusEvent.TYPE, this);
       events.addHandler(ClipboardActionEvent.TYPE, this);
       events.addHandler(RunAutomationEvent.TYPE, this);
-      
+
       // register for uncaught exceptions
       uncaughtExHandler.register();
    }
@@ -235,7 +235,7 @@ public class Application implements ApplicationEventHandlers
 
             // set session info
             session_.setSessionInfo(sessionInfo);
-            
+
             // initialize application hooks
             if (sessionInfo.isAutomationAgent())
             {
@@ -249,13 +249,9 @@ public class Application implements ApplicationEventHandlers
             // initialize workbench
             // refresh prefs incase they were loaded without sessionInfo (this happens exclusively
             // in desktop mode, though unsure why)
-            userState_.get().writeState(boolArg ->
-            {
-               userPrefs_.get().writeUserPrefs(boolArg1 ->
-               {
-                  initializeWorkbench();
-               });
-            });
+            userState_.get().writeStateLocal();
+            userPrefs_.get().writeUserPrefsLocal();
+            initializeWorkbench();
          }
 
          public void onError(ServerError error)
@@ -307,7 +303,7 @@ public class Application implements ApplicationEventHandlers
                {
                   buttonLabels.add(constants_.goHomeButtonLabel());
                   elementIds.add(ElementIds.DIALOG_HOME_BUTTON);
-                  buttonOperations.add(() -> 
+                  buttonOperations.add(() ->
                   {
                      Window.Location.assign(homepageLink);
                   });
@@ -472,35 +468,35 @@ public class Application implements ApplicationEventHandlers
       if (!ModalDialogTracker.dispatchAriaLiveStatus(event.getMessage(), delayMs, event.getSeverity()))
          view_.reportStatus(event.getMessage(), delayMs, event.getSeverity());
    }
-   
+
    @Override
    public void onClipboardAction(ClipboardActionEvent event)
    {
       ClipboardActionEvent.Data data = event.getData();
-      
+
       switch (data.getType())
       {
-      
+
       case SET:
       {
          Clipboard.setText(data.getText());
          return;
       }
-      
+
       default:
       {
          Debug.log("Unimplemented clipboard action '" + data.getText() + "'");
       }
-      
+
       }
    }
-   
+
    @Override
    public void onRunAutomation(RunAutomationEvent event)
    {
       events_.fireEvent(new SendToConsoleEvent(".rs.automation.run()", true));
    }
-   
+
    @Override
    public void onServerOffline(ServerOfflineEvent event)
    {
@@ -993,7 +989,7 @@ public class Application implements ApplicationEventHandlers
 
       // Initialize application theme system
       pAppThemes_.get().initializeThemes(rootPanel_.getElement());
-      
+
       // Set default text rendering
       Document.get().getBody().getStyle().setProperty(
             "textRendering",

@@ -34,13 +34,13 @@ import org.rstudio.studio.client.workbench.prefs.events.UserStateChangedEvent;
 public class UserState extends UserStateAccessor implements UserStateChangedEvent.Handler
 {
    @Inject
-   public UserState(Session session, 
+   public UserState(Session session,
                   EventBus eventBus,
                   PrefsServerOperations server,
                   SatelliteManager satelliteManager)
    {
       super(session.getSessionInfo(),
-            (session.getSessionInfo() == null ? 
+            (session.getSessionInfo() == null ?
                JsArray.createArray().cast() :
                session.getSessionInfo().getUserState()));
 
@@ -50,18 +50,18 @@ public class UserState extends UserStateAccessor implements UserStateChangedEven
 
       eventBus.addHandler(UserStateChangedEvent.TYPE, this);
    }
-   
+
    public void writeState()
    {
       writeState(null);
    }
 
-   public void writeState(CommandWithArg<Boolean> onCompleted)
-   {
-      updatePrefs(session_.getSessionInfo().getUserState());
+   public void writeState(CommandWithArg<Boolean> onCompleted) {
+      writeStateLocal();
+
       server_.setUserState(
          session_.getSessionInfo().getUserStateLayer().getValues(),
-         new ServerRequestCallback<Void>() 
+         new ServerRequestCallback<Void>()
          {
             @Override
             public void onResponseReceived(Void v)
@@ -91,7 +91,12 @@ public class UserState extends UserStateAccessor implements UserStateChangedEven
             }
          });
    }
-   
+
+   public void writeStateLocal()
+   {
+      updatePrefs(session_.getSessionInfo().getUserState());
+   }
+
    @Override
    public void onUserStateChanged(UserStateChangedEvent e)
    {
